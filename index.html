@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pong Wars - On-Chain ETH Betting Battle</title>
+    <meta
+      name="description"
+      content="The eternal battle between day and night with real ETH betting on Ethereum!"
+    />
+    <meta name="theme-color" content="#172B36" />
+    <!-- Keep existing styles -->
+    <style>
+      /* All existing styles remain unchanged */
+    </style>
+  </head>
+  <body>
+    <!-- Keep existing HTML structure -->
+    <script>
+      // WebSocket connection
+      let ws;
+      let isHost = false; // First player to join is the host
+      
+      function connectWebSocket() {
+        ws = new WebSocket(`ws://${window.location.host}`);
+        
+        ws.onopen = () => {
+          console.log('Connected to game server');
+          debug('Connected to game server');
+        };
+        
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          
+          switch(message.type) {
+            case 'gameState':
+              if (!isHost) { // Only non-host updates their state
+                updateGameState(message.data);
+              }
+              break;
+              
+            case 'gameStart':
+              if (!isHost) {
+                startGame();
+              }
+              break;
+              
+            case 'gameEnd':
+              if (!isHost) {
+                handleGameEnd(message.data);
+              }
+              break;
+          }
+        };
+        
+        ws.onclose = () => {
+          console.log('Disconnected from game server');
+          debug('Disconnected from game server - Reconnecting...');
+          setTimeout(connectWebSocket, 1000); // Reconnect after 1 second
+        };
+        
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          debug('WebSocket error - Reconnecting...');
+        };
+      }
+      
+      function updateGameState(state) {
+        if (!gameRunning) return;
+        
+        // Update ball positions
+        balls = state.balls;
+        dayScore = state.dayScore;
+        nightScore = state.nightScore;
+        
+        // Force redraw
+        draw();
+      }
+      
+      function broadcastGameState() {
+        if (!ws || !isHost || !gameRunning) return;
+        
+        ws.send(JSON.stringify({
+          type: 'gameState',
+          data: {
+            balls,
+            dayScore,
+            nightScore,
+            isGameRunning: gameRunning
+          }
+        }));
+      }
+      
+      // Modify existing game functions to support multiplayer
+      async function createGame() {
+        try {
+          const result = await originalCreateGame();
+          if (result) {
+            isHost = true; // Day player is the host
+          }
+          return result;
+        } catch (error) {
+          throw error;
+        }
+      }
+      
+      async function joinGame() {
+        try {
+          const result = await originalJoinGame();
+          if (result) {
+            isHost = false; // Night player is not the host
+          }
+          return result;
+        } catch (error) {
+          throw error;
+        }
+      }
+      
+      // Store original functions
+      const originalStartGame = startGame;
+      const originalEndGame = endGame;
+      const originalDraw = draw;
+      
+      // Override game functions
+      function startGame() {
+        if (isHost) {
+          ws.send(JSON.stringify({ type: 'gameStart' }));
+        }
+        originalStartGame();
+      }
+      
+      function endGame() {
+        if (isHost) {
+          ws.send(JSON.stringify({
+            type: 'gameEnd',
+            data: {
+              dayScore,
+              nightScore,
+              winner: gameWinner
+            }
+          }));
+        }
+        originalEndGame();
+      }
+      
+      function draw() {
+        originalDraw();
+        if (isHost && gameRunning) {
+          broadcastGameState();
+        }
+      }
+      
+      // Connect to WebSocket when the game loads
+      connectWebSocket();
+      
+      // Rest of the original game code remains unchanged
+    </script>
+  </body>
+</html>
