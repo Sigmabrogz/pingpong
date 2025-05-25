@@ -16,51 +16,83 @@
   <body>
     <!-- Keep existing HTML structure -->
     <script>
+      // Debug function definition
+      function debug(message) {
+        console.log('🔍 DEBUG:', message);
+        const debugText = document.getElementById('debugText');
+        const debugInfo = document.getElementById('debugInfo');
+        if (debugText && debugInfo) {
+          debugText.textContent = message;
+          debugInfo.classList.remove('hidden');
+        }
+      }
+
       // WebSocket connection
       let ws;
       let isHost = false; // First player to join is the host
+      let reconnectAttempts = 0;
+      const MAX_RECONNECT_ATTEMPTS = 5;
       
       function connectWebSocket() {
-        ws = new WebSocket(`ws://${window.location.host}`);
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsPort = '3001'; // Updated port
+        const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPort}`;
+        
+        ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
           console.log('Connected to game server');
           debug('Connected to game server');
+          reconnectAttempts = 0; // Reset attempts on successful connection
         };
         
         ws.onmessage = (event) => {
-          const message = JSON.parse(event.data);
-          
-          switch(message.type) {
-            case 'gameState':
-              if (!isHost) { // Only non-host updates their state
-                updateGameState(message.data);
-              }
-              break;
-              
-            case 'gameStart':
-              if (!isHost) {
-                startGame();
-              }
-              break;
-              
-            case 'gameEnd':
-              if (!isHost) {
-                handleGameEnd(message.data);
-              }
-              break;
+          try {
+            const message = JSON.parse(event.data);
+            
+            switch(message.type) {
+              case 'gameState':
+                if (!isHost) { // Only non-host updates their state
+                  updateGameState(message.data);
+                }
+                break;
+                
+              case 'gameStart':
+                if (!isHost) {
+                  startGame();
+                }
+                break;
+                
+              case 'gameEnd':
+                if (!isHost) {
+                  handleGameEnd(message.data);
+                }
+                break;
+            }
+          } catch (error) {
+            console.error('Error processing message:', error);
+            debug('Error processing game message');
           }
         };
         
         ws.onclose = () => {
           console.log('Disconnected from game server');
-          debug('Disconnected from game server - Reconnecting...');
-          setTimeout(connectWebSocket, 1000); // Reconnect after 1 second
+          debug('Disconnected from game server');
+          
+          // Implement exponential backoff for reconnection
+          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
+            reconnectAttempts++;
+            debug(`Reconnecting in ${timeout/1000} seconds... (Attempt ${reconnectAttempts})`);
+            setTimeout(connectWebSocket, timeout);
+          } else {
+            debug('Max reconnection attempts reached. Please refresh the page.');
+          }
         };
         
         ws.onerror = (error) => {
           console.error('WebSocket error:', error);
-          debug('WebSocket error - Reconnecting...');
+          debug('WebSocket connection error');
         };
       }
       
@@ -79,15 +111,20 @@
       function broadcastGameState() {
         if (!ws || !isHost || !gameRunning) return;
         
-        ws.send(JSON.stringify({
-          type: 'gameState',
-          data: {
-            balls,
-            dayScore,
-            nightScore,
-            isGameRunning: gameRunning
-          }
-        }));
+        try {
+          ws.send(JSON.stringify({
+            type: 'gameState',
+            data: {
+              balls,
+              dayScore,
+              nightScore,
+              isGameRunning: gameRunning
+            }
+          }));
+        } catch (error) {
+          console.error('Error broadcasting game state:', error);
+          debug('Error sending game update');
+        }
       }
       
       // Modify existing game functions to support multiplayer
