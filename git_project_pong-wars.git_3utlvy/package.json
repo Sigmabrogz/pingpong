@@ -1,0 +1,15 @@
+{
+  "name": "pong-wars-betting",
+  "version": "1.0.0",
+  "description": "On-chain betting for Pong Wars game",
+  "main": "index.js",
+  "scripts": {
+    "compile": "node compile.js",
+    "deploy": "node deploy.js"
+  },
+  "dependencies": {
+    "solc": "^0.8.19",
+    "ethers": "^6.7.1"
+  },
+  "type": "module"
+}
